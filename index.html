@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="theme-color" content="#080b0f"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="MDCAT AI"/>
+<meta name="description" content="AI-powered MDCAT preparation app"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
+<title>MDCAT Prep AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#080b0f;color:#e2e8f0;font-family:'Sora','Segoe UI',sans-serif;overflow:hidden}
+#root{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:99px}
+
+/* ── Animations ── */
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.fade-up{animation:fadeUp .35s ease forwards}
+.fade-in{animation:fadeIn .25s ease forwards}
+
+/* ── Cards & Buttons ── */
+.card{background:#0d1117;border:1px solid #1a2332;border-radius:16px;padding:1.25rem;transition:transform .15s,border-color .15s;cursor:pointer}
+.card:active{transform:scale(.98)}
+.btn{display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.1rem;border-radius:8px;border:none;cursor:pointer;font-size:.83rem;font-weight:700;font-family:inherit;transition:opacity .15s}
+.btn:active{opacity:.8}
+.btn-primary{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff}
+.btn-green{background:linear-gradient(135deg,#10b981,#059669);color:#fff}
+.btn-ghost{background:#1e293b;color:#e2e8f0}
+.btn-purple{background:linear-gradient(135deg,#a855f7,#6366f1);color:#fff}
+.btn-full{width:100%;justify-content:center;padding:.85rem}
+
+/* ── Overlay ── */
+.overlay{position:fixed;inset:0;background:rgba(8,11,15,.88);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;z-index:100}
+.spinner{width:40px;height:40px;border:3px solid #1e293b;border-top:3px solid #3b82f6;border-radius:50%;animation:spin .8s linear infinite}
+
+/* ── Notification ── */
+.notif{position:fixed;bottom:24px;right:16px;left:16px;z-index:200;padding:.75rem 1.1rem;border-radius:12px;font-size:.85rem;font-weight:600;animation:fadeUp .3s ease;border:1px solid}
+.notif-success{background:#064e3b;border-color:#059669;color:#6ee7b7}
+.notif-error{background:#7f1d1d;border-color:#dc2626;color:#fca5a5}
+
+/* ── Topic chips ── */
+.chip{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .9rem;border-radius:99px;font-size:.78rem;font-weight:700;border:1px solid;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.chip:active{opacity:.7}
+
+/* ── Option rows ── */
+.option{display:flex;align-items:flex-start;gap:.7rem;padding:.85rem 1rem;border-radius:12px;border:1px solid #1a2332;margin-bottom:.55rem;cursor:pointer;transition:all .2s;background:#0d1117}
+.option.correct{background:#052e16;border-color:#16a34a}
+.option.wrong{background:#450a0a;border-color:#dc2626}
+.option.neutral{background:#0f2a3a;border-color:#1e4a7a}
+.option:active{transform:scale(.99)}
+.letter{min-width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;background:#1e293b;color:#94a3b8;flex-shrink:0}
+.option.correct .letter{background:#16a34a;color:#fff}
+.option.wrong .letter{background:#dc2626;color:#fff}
+.option.neutral .letter{background:#1e4a7a;color:#fff}
+
+/* ── Safe area ── */
+.safe-bottom{padding-bottom:env(safe-area-inset-bottom,16px)}
+.safe-top{padding-top:env(safe-area-inset-top,0px)}
+
+/* ── API Key Screen ── */
+.api-screen{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;gap:1.5rem}
+.api-input{width:100%;background:#0d1117;border:1px solid #1a2332;border-radius:10px;color:#e2e8f0;padding:.85rem 1rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .2s}
+.api-input:focus{border-color:#3b82f6}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+const DB_KEY = 'mdcat_mcqs_v2';
+const API_KEY_STORAGE = 'mdcat_api_key';
+
+let state = {
+  view: 'home',       // home | bank | quiz | bookgen | apikey
+  mcqs: [],
+  topics: [],
+  quizState: null,
+  loading: false,
+  loadingMsg: '',
+  notification: null,
+  filterTopic: 'all',
+  bookData: null,     // {type:'pdf'|'text', data:string, name:string}
+  expandedMcq: null,
+  apiKey: localStorage.getItem(API_KEY_STORAGE) || '',
+};
+
+// Load saved MCQs
+try {
+  const saved = localStorage.getItem(DB_KEY);
+  if (saved) state.mcqs = JSON.parse(saved);
+} catch(e) {}
+
+function saveMcqs() {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(state.mcqs)); } catch(e) {}
+}
+
+function deriveTopics() {
+  state.topics = [...new Set(state.mcqs.map(m => m.topic).filter(Boolean))];
+}
+deriveTopics();
+
+const TOPIC_COLORS = [
+  {bg:'#0f2a1a',border:'#1a5c33',text:'#4ade80',dot:'#22c55e'},
+  {bg:'#1a1a0f',border:'#5c5500',text:'#facc15',dot:'#eab308'},
+  {bg:'#1a0f1a',border:'#5c1a7a',text:'#c084fc',dot:'#a855f7'},
+  {bg:'#0f1a2a',border:'#1a4a7a',text:'#60a5fa',dot:'#3b82f6'},
+  {bg:'#2a0f0f',border:'#7a1a1a',text:'#f87171',dot:'#ef4444'},
+  {bg:'#0f2a2a',border:'#1a6a6a',text:'#22d3ee',dot:'#06b6d4'},
+  {bg:'#2a1a0f',border:'#7a4a1a',text:'#fb923c',dot:'#f97316'},
+  {bg:'#1a2a0f',border:'#4a7a1a',text:'#a3e635',dot:'#84cc16'},
+];
+
+function topicColor(topic) {
+  const idx = state.topics.indexOf(topic);
+  return TOPIC_COLORS[Math.max(0,idx) % TOPIC_COLORS.length];
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER ENGINE
+// ══════════════════════════════════════════════════════
+function render() {
+  const root = document.getElementById('root');
+  root.innerHTML = '';
+
+  if (!state.apiKey) { root.appendChild(renderApiKey()); return; }
+
+  if (state.loading) root.appendChild(renderOverlay());
+  if (state.notification) root.appendChild(renderNotif());
+
+  switch(state.view) {
+    case 'home':    root.appendChild(renderHome()); break;
+    case 'bank':    root.appendChild(renderBank()); break;
+    case 'quiz':    root.appendChild(renderQuiz()); break;
+    case 'bookgen': root.appendChild(renderBookGen()); break;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════
+function el(tag, attrs={}, ...children) {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v]) => {
+    if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+    else e.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c == null) return;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return e;
+}
+
+function svg(path, size=18) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('width',size); s.setAttribute('height',size);
+  s.setAttribute('viewBox','0 0 24 24'); s.setAttribute('fill','none');
+  s.setAttribute('stroke','currentColor'); s.setAttribute('stroke-width','2');
+  s.setAttribute('stroke-linecap','round'); s.setAttribute('stroke-linejoin','round');
+  s.innerHTML = path;
+  return s;
+}
+
+const ICONS = {
+  upload: '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  quiz: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+  back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  spark: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/>',
+  list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  key: '<path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+};
+
+function icon(name, size=18) { return svg(ICONS[name]||'', size); }
+
+function notify(msg, type='success') {
+  state.notification = {msg, type};
+  render();
+  setTimeout(() => { state.notification = null; render(); }, 3000);
+}
+
+function setLoading(bool, msg='') {
+  state.loading = bool;
+  state.loadingMsg = msg;
+}
+
+function go(view) { state.view = view; render(); }
+
+// ══════════════════════════════════════════════════════
+//  API CALLS — Google Gemini (FREE)
+// ══════════════════════════════════════════════════════
+function parseJSON(text) {
+  const cleaned = text.replace(/```json|```/g,'').trim();
+  try { return JSON.parse(cleaned); } catch {
+    const m = cleaned.match(/\[[\s\S]*\]/);
+    if (m) try { return JSON.parse(m[0]); } catch {}
+    return null;
+  }
+}
+
+async function callGeminiJSON(prompt, systemPrompt) {
+  const fullPrompt = systemPrompt + '\n\n' + prompt;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${state.apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 8192 }
+      })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return parseJSON(text);
+}
+
+async function callGeminiWithPDF(base64, userPrompt, systemPrompt) {
+  const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${state.apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: 'application/pdf', data: base64 } },
+            { text: fullPrompt }
+          ]
+        }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 8192 }
+      })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return parseJSON(text);
+}
+// ══════════════════════════════════════════════════════
+//  FILE READING
+// ══════════════════════════════════════════════════════
+function readAsText(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsText(file);
+  });
+}
+
+function readAsBase64(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  HANDLERS
+// ══════════════════════════════════════════════════════
+async function handleTestUpload(file) {
+  const isPDF = file.name.endsWith('.pdf') || file.type === 'application/pdf';
+  const sys = `You are an MDCAT MCQ extraction expert. Extract every MCQ from the test paper. Return ONLY a JSON array, no markdown, no preamble. Each element: {"question":"...","options":[{"letter":"A","text":"..."},{"letter":"B","text":"..."},{"letter":"C","text":"..."},{"letter":"D","text":"..."}],"correct":"A","topic":"Biology"}. Use specific sub-topics like Enzymes, Cell Biology, Organic Chemistry, Thermodynamics, etc. If correct answer not marked, use best judgment. Start with [ end with ].`;
+  setLoading(true, isPDF ? 'Reading PDF...' : 'Reading file...'); render();
+  try {
+    let result;
+    if (isPDF) {
+      setLoading(true,'Extracting MCQs from PDF...'); render();
+      const b64 = await readAsBase64(file);
+      result = await callGeminiWithPDF(b64,'Extract ALL MCQs from this MDCAT test paper. Return ONLY a JSON array.',sys);
+    } else {
+      const text = await readAsText(file);
+      setLoading(true,'Categorising MCQs...'); render();
+      result = await callGeminiJSON(`MDCAT test paper:\n\n${text.slice(0,12000)}`,sys);
+    }
+    if (result && Array.isArray(result)) {
+      const newMcqs = result.map((m,i) => ({...m, id:`${Date.now()}-${i}`, source:file.name}));
+      state.mcqs = [...state.mcqs, ...newMcqs];
+      deriveTopics(); saveMcqs();
+      setLoading(false); notify(`Added ${newMcqs.length} MCQs from "${file.name}"`);
+    } else {
+      setLoading(false); notify('Could not parse MCQs. Ensure PDF has selectable text.','error');
+    }
+  } catch(e) {
+    setLoading(false); notify('Error: '+(e.message||'Processing failed'),'error');
+  }
+  render();
+}
+
+async function handleBookUpload(file) {
+  const isPDF = file.name.endsWith('.pdf') || file.type === 'application/pdf';
+  setLoading(true,'Reading book...'); render();
+  try {
+    if (isPDF) {
+      const b64 = await readAsBase64(file);
+      state.bookData = {type:'pdf', data:b64, name:file.name};
+    } else {
+      const text = await readAsText(file);
+      state.bookData = {type:'text', data:text.slice(0,15000), name:file.name};
+    }
+    setLoading(false); go('bookgen');
+  } catch(e) {
+    setLoading(false); notify('Error reading file','error'); render();
+  }
+}
+
+async function handleGenerate(topic, count) {
+  const sys = `You are an MDCAT question setter. Generate high-quality MDCAT-style MCQs. Return ONLY a JSON array, no markdown. Each: {"question":"...","options":[{"letter":"A","text":"..."},{"letter":"B","text":"..."},{"letter":"C","text":"..."},{"letter":"D","text":"..."}],"correct":"A","topic":"${topic}"}. Test deep conceptual understanding. Start with [.`;
+  setLoading(true, `Generating ${count} MCQs on "${topic}"...`); render();
+  try {
+    let result;
+    if (state.bookData.type === 'pdf') {
+      result = await callGeminiWithPDF(state.bookData.data,`Generate exactly ${count} MDCAT MCQs about "${topic}" from this content. Return ONLY JSON array.`,sys);
+    } else {
+      result = await callGeminiJSON(`Generate ${count} MDCAT MCQs about "${topic}":\n\n${state.bookData.data.slice(0,12000)}`,sys);
+    }
+    if (result && Array.isArray(result)) {
+      const newMcqs = result.map((m,i) => ({...m, id:`book-${Date.now()}-${i}`, source:'AI Generated'}));
+      state.mcqs = [...state.mcqs, ...newMcqs];
+      deriveTopics(); saveMcqs();
+      setLoading(false); notify(`Generated ${newMcqs.length} MCQs on "${topic}"`);
+    } else {
+      setLoading(false); notify('Could not generate. Try again.','error');
+    }
+  } catch(e) {
+    setLoading(false); notify('Error: '+(e.message||'Failed'),'error');
+  }
+  render();
+}
+
+function startQuiz(topic) {
+  const pool = topic === 'all' ? state.mcqs : state.mcqs.filter(m => m.topic === topic);
+  if (!pool.length) { notify('No MCQs for this topic yet!','error'); render(); return; }
+  const shuffled = [...pool].sort(() => Math.random()-.5).slice(0, Math.min(20,pool.length));
+  state.quizState = {topic, questions:shuffled, current:0, answers:{}, done:false};
+  go('quiz');
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: API KEY SCREEN
+// ══════════════════════════════════════════════════════
+function renderApiKey() {
+  let showKey = false;
+  const wrap = el('div',{class:'api-screen safe-top safe-bottom fade-up'});
+
+  const logoWrap = el('div',{style:{textAlign:'center'}});
+  const logoText = el('div',{style:{fontSize:'2rem',fontWeight:800,background:'linear-gradient(135deg,#6ee7b7,#3b82f6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:'.5rem'}},'MDCAT Prep AI');
+  const sub = el('div',{style:{color:'#475569',fontSize:'.85rem',lineHeight:1.6,maxWidth:'300px',textAlign:'center'}},'Enter your free Google Gemini API key to get started. It\'s stored only on your device.');
+  logoWrap.append(logoText, sub);
+
+  const keyIcon = el('div',{style:{width:64,height:64,borderRadius:16,background:'#0f1a2a',border:'1px solid #1e4a7a',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa'}});
+  keyIcon.appendChild(icon('key',28));
+
+  const inputWrap = el('div',{style:{width:'100%',maxWidth:'400px',position:'relative'}});
+  const input = el('input',{class:'api-input',type:'password',placeholder:'AIza...'});
+  const toggleBtn = el('button',{style:{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#475569',cursor:'pointer',display:'flex',alignItems:'center'}});
+  toggleBtn.appendChild(icon('eye',16));
+  toggleBtn.addEventListener('click', () => {
+    showKey = !showKey;
+    input.type = showKey ? 'text' : 'password';
+    toggleBtn.innerHTML = '';
+    toggleBtn.appendChild(icon(showKey ? 'eyeOff' : 'eye', 16));
+  });
+  inputWrap.append(input, toggleBtn);
+
+  const saveBtn = el('button',{class:'btn btn-primary',style:{width:'100%',maxWidth:'400px',justifyContent:'center',padding:'.85rem',fontSize:'1rem'}});
+  saveBtn.append(icon('arrow',16),'Save & Continue');
+  saveBtn.addEventListener('click', () => {
+    const key = input.value.trim();
+    if (key.length < 10) { notify('Invalid API key format','error'); render(); return; }
+    state.apiKey = key;
+    localStorage.setItem(API_KEY_STORAGE, key);
+    go('home');
+  });
+
+  const helpText = el('div',{style:{color:'#334155',fontSize:'.75rem',textAlign:'center',maxWidth:'320px',lineHeight:1.6}},
+    'Get your API key at ',
+    el('a',{href:'https://aistudio.google.com/apikey',target:'_blank',style:{color:'#3b82f6'}},'aistudio.google.com/apikey'),
+    '. Your key is saved locally and never sent anywhere except Google.'
+  );
+
+  wrap.append(keyIcon, logoWrap, inputWrap, saveBtn, helpText);
+  return wrap;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: OVERLAY & NOTIF
+// ══════════════════════════════════════════════════════
+function renderOverlay() {
+  const ov = el('div',{class:'overlay'});
+  const sp = el('div',{class:'spinner'});
+  const msg = el('div',{style:{color:'#94a3b8',fontSize:'.9rem'}}, state.loadingMsg);
+  ov.append(sp, msg);
+  return ov;
+}
+
+function renderNotif() {
+  const {msg, type} = state.notification;
+  return el('div',{class:`notif notif-${type}`}, msg);
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: HOME
+// ══════════════════════════════════════════════════════
+function renderHome() {
+  const wrap = el('div',{style:{minHeight:'100%',overflowY:'auto',paddingBottom:'2rem'}});
+
+  // Header
+  const header = el('div',{style:{padding:'1.25rem 1.25rem 0',display:'flex',alignItems:'center',gap:'.6rem',position:'sticky',top:0,background:'#080b0f',zIndex:10,borderBottom:'1px solid #0d1117'}});
+  const logo = el('div',{style:{fontSize:'1.2rem',fontWeight:800,background:'linear-gradient(135deg,#6ee7b7,#3b82f6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}},'MDCAT Prep AI');
+  const badge = el('div',{style:{background:'#1e293b',color:'#94a3b8',fontSize:'.6rem',padding:'.18rem .55rem',borderRadius:'99px',fontWeight:700,letterSpacing:'.05em'}},'AI POWERED');
+  // Settings btn
+  const settingsBtn = el('button',{style:{marginLeft:'auto',background:'#1e293b',border:'none',color:'#475569',padding:'.4rem .7rem',borderRadius:8,cursor:'pointer',fontSize:'.72rem',fontWeight:600}}, 'Change Key');
+  settingsBtn.addEventListener('click', () => { state.apiKey = ''; localStorage.removeItem(API_KEY_STORAGE); go('home'); });
+  header.append(logo, badge, settingsBtn);
+
+  // Stats
+  const aiCount = state.mcqs.filter(m=>m.source==='AI Generated').length;
+  const statsRow = el('div',{style:{display:'flex',gap:'.75rem',padding:'1rem 1.25rem',overflowX:'auto'}});
+  [
+    {num:state.mcqs.length, label:'Total MCQs', color:'#3b82f6'},
+    {num:state.topics.length, label:'Topics', color:'#10b981'},
+    {num:aiCount, label:'AI Generated', color:'#a855f7'},
+  ].forEach(s => {
+    const card = el('div',{style:{background:'#0d1117',border:'1px solid #1a2332',borderRadius:12,padding:'.85rem 1.1rem',minWidth:100,flexShrink:0}});
+    card.append(
+      el('div',{style:{fontSize:'1.6rem',fontWeight:800,color:s.color,lineHeight:1}}, String(s.num)),
+      el('div',{style:{color:'#475569',fontSize:'.72rem',marginTop:'.2rem'}}, s.label)
+    );
+    statsRow.appendChild(card);
+  });
+
+  // Section label
+  const secLabel = txt => {
+    const d = el('div',{style:{padding:'1rem 1.25rem .5rem',fontSize:'.68rem',fontWeight:700,letterSpacing:'.1em',color:'#334155',textTransform:'uppercase'}});
+    d.textContent = txt; return d;
+  };
+
+  // Upload Test card
+  const testLabel = el('label',{for:'testFile',class:'card',style:{display:'block',margin:'0 1.25rem .75rem',cursor:'pointer'}});
+  const testInput = el('input',{id:'testFile',type:'file',accept:'.pdf,.txt,.doc,.docx',style:{display:'none'}});
+  testInput.addEventListener('change', e => e.target.files[0] && handleTestUpload(e.target.files[0]));
+  testLabel.append(
+    testInput,
+    makeCardInner('#0f2a3a','#38bdf8','upload','Upload Past Test','Upload MDCAT test PDFs — AI extracts & sorts all MCQs by topic automatically.','Upload PDF','primary')
+  );
+
+  // Upload Book card
+  const bookLabel = el('label',{for:'bookFile',class:'card',style:{display:'block',margin:'0 1.25rem .75rem',cursor:'pointer'}});
+  const bookInput = el('input',{id:'bookFile',type:'file',accept:'.pdf,.txt',style:{display:'none'}});
+  bookInput.addEventListener('change', e => e.target.files[0] && handleBookUpload(e.target.files[0]));
+  bookLabel.append(
+    bookInput,
+    makeCardInner('#1a0f2a','#a78bfa','book','Upload Book / Notes','Upload any book or notes PDF — AI generates exam-ready MCQs on your chosen topic.','Generate MCQs','purple')
+  );
+
+  // MCQ Bank card
+  const bankCard = el('div',{class:'card',style:{margin:'0 1.25rem .75rem'}});
+  bankCard.append(makeCardInner('#0f2a1a','#4ade80','list',`MCQ Bank (${state.mcqs.length})`, 'Browse, filter, and manage all your MCQs by topic.','Open Bank','green'));
+  bankCard.addEventListener('click', () => go('bank'));
+
+  // Quick Quiz card
+  const quizCard = el('div',{class:'card',style:{margin:'0 1.25rem .75rem'}});
+  quizCard.append(makeCardInner('#1a1a0f','#fbbf24','quiz','Quick Quiz','Random 20 questions from your entire bank. Instant feedback.','Start Quiz','primary'));
+  quizCard.addEventListener('click', () => startQuiz('all'));
+
+  wrap.append(header, statsRow);
+
+  wrap.appendChild(secLabel('Actions'));
+  wrap.append(testLabel, bookLabel, bankCard, quizCard);
+
+  // Topics
+  if (state.topics.length > 0) {
+    wrap.appendChild(secLabel('Quiz by Topic'));
+    const topicWrap = el('div',{style:{padding:'0 1.25rem',display:'flex',flexWrap:'wrap',gap:'.5rem',paddingBottom:'1rem'}});
+    state.topics.forEach(t => {
+      const c = topicColor(t);
+      const cnt = state.mcqs.filter(m=>m.topic===t).length;
+      const chip = el('div',{class:'chip',style:{background:c.bg,borderColor:c.border,color:c.text}});
+      const dot = el('span',{style:{width:7,height:7,borderRadius:'50%',background:c.dot,display:'inline-block',flexShrink:0}});
+      chip.append(dot, `${t} (${cnt})`);
+      chip.appendChild(icon('arrow',12));
+      chip.addEventListener('click', () => startQuiz(t));
+      topicWrap.appendChild(chip);
+    });
+    wrap.appendChild(topicWrap);
+  }
+
+  return wrap;
+}
+
+function makeCardInner(iconBg, iconColor, iconName, title, sub, btnText, btnVariant) {
+  const frag = document.createDocumentFragment();
+  const iconWrap = el('div',{style:{width:40,height:40,borderRadius:10,background:iconBg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'.85rem',color:iconColor}});
+  iconWrap.appendChild(icon(iconName,18));
+  const t = el('div',{style:{fontSize:'.95rem',fontWeight:700,marginBottom:'.3rem'}}, title);
+  const s = el('div',{style:{color:'#475569',fontSize:'.8rem',lineHeight:1.5,marginBottom:'1rem'}}, sub);
+  const btn = el('span',{class:`btn btn-${btnVariant}`});
+  btn.append(icon(iconName,13), btnText);
+  frag.append(iconWrap, t, s, btn);
+  return frag;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: BANK
+// ══════════════════════════════════════════════════════
+function renderBank() {
+  const wrap = el('div',{style:{minHeight:'100%',display:'flex',flexDirection:'column'}});
+
+  // Top bar
+  const topBar = el('div',{style:{display:'flex',alignItems:'center',gap:'.75rem',padding:'1rem 1.25rem',borderBottom:'1px solid #1a2332',position:'sticky',top:0,background:'#080b0f',zIndex:10}});
+  const backBtn = el('button',{class:'btn btn-ghost',style:{padding:'.45rem .7rem',minWidth:'unset'}});
+  backBtn.appendChild(icon('back',16));
+  backBtn.addEventListener('click', () => go('home'));
+  const title = el('div',{style:{fontWeight:800,fontSize:'1rem'}},'MCQ Bank');
+  const quizBtn = el('button',{class:'btn btn-primary',style:{marginLeft:'auto'}});
+  quizBtn.append(icon('quiz',13), `Quiz ${state.filterTopic !== 'all' ? '"'+state.filterTopic+'"' : 'All'}`);
+  quizBtn.addEventListener('click', () => startQuiz(state.filterTopic));
+  topBar.append(backBtn, title, quizBtn);
+
+  // Filter chips
+  const filterRow = el('div',{style:{display:'flex',gap:'.45rem',padding:'.75rem 1.25rem',overflowX:'auto',borderBottom:'1px solid #1a2332'}});
+  const makeFilter = (label, val) => {
+    const active = state.filterTopic === val;
+    const c = val === 'all' ? null : topicColor(val);
+    const chip = el('div',{class:'chip',style:{
+      background: active ? (c?.bg||'#1e3a5f') : 'transparent',
+      borderColor: active ? (c?.border||'#3b82f6') : '#1a2332',
+      color: active ? (c?.text||'#60a5fa') : '#475569',
+      flexShrink:0
+    }}, label);
+    chip.addEventListener('click', () => { state.filterTopic = val; render(); });
+    return chip;
+  };
+  filterRow.appendChild(makeFilter(`All (${state.mcqs.length})`,'all'));
+  state.topics.forEach(t => {
+    filterRow.appendChild(makeFilter(`${t} (${state.mcqs.filter(m=>m.topic===t).length})`, t));
+  });
+
+  // MCQ list
+  const list = el('div',{style:{flex:1,overflowY:'auto',padding:'1rem 1.25rem 2rem'}});
+  const filtered = state.filterTopic === 'all' ? state.mcqs : state.mcqs.filter(m=>m.topic===state.filterTopic);
+
+  if (!filtered.length) {
+    list.appendChild(el('div',{style:{textAlign:'center',padding:'4rem 1rem',color:'#334155',fontSize:'.9rem'}}, 'No MCQs yet. Upload a test to get started!'));
+  } else {
+    filtered.forEach((mcq, i) => {
+      const c = topicColor(mcq.topic);
+      const isExp = state.expandedMcq === mcq.id;
+      const card = el('div',{style:{background: isExp?'#0d1a2a':'#0d1117',border:`1px solid ${isExp?'#1e4a7a':'#1a2332'}`,borderRadius:12,marginBottom:'.55rem',overflow:'hidden',transition:'all .2s'}});
+
+      const head = el('div',{style:{display:'flex',alignItems:'flex-start',gap:'.6rem',padding:'.9rem 1rem',cursor:'pointer'}});
+      const dot = el('span',{style:{width:8,height:8,borderRadius:'50%',background:c.dot,display:'inline-block',marginTop:6,flexShrink:0}});
+      const qtext = el('div',{style:{flex:1,fontSize:'.85rem',lineHeight:1.5,fontWeight:500}});
+      qtext.textContent = `Q${i+1}. ${mcq.question}`;
+      const rightSide = el('div',{style:{display:'flex',gap:'.35rem',alignItems:'center',flexShrink:0}});
+      const topicBadge = el('span',{style:{background:c.bg,border:`1px solid ${c.border}`,color:c.text,fontSize:'.62rem',padding:'.12rem .45rem',borderRadius:99,fontWeight:700,whiteSpace:'nowrap'}}, mcq.topic);
+      const delBtn = el('button',{style:{background:'transparent',border:'none',color:'#ef444466',cursor:'pointer',padding:2,display:'flex'}});
+      delBtn.appendChild(icon('trash',13));
+      delBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        state.mcqs = state.mcqs.filter(m=>m.id!==mcq.id);
+        if (state.expandedMcq === mcq.id) state.expandedMcq = null;
+        deriveTopics(); saveMcqs();
+        notify('MCQ removed'); render();
+      });
+      rightSide.append(topicBadge, delBtn);
+      head.append(dot, qtext, rightSide);
+      head.addEventListener('click', () => { state.expandedMcq = isExp ? null : mcq.id; render(); });
+
+      card.appendChild(head);
+
+      if (isExp && mcq.options) {
+        const body = el('div',{style:{padding:'0 1rem 1rem 1.5rem'}});
+        mcq.options.forEach(opt => {
+          const row = el('div',{style:{display:'flex',gap:'.5rem',alignItems:'flex-start',padding:'.28rem 0',color: opt.letter===mcq.correct?'#4ade80':'#475569',fontSize:'.82rem'}});
+          const lbl = el('span',{style:{fontWeight:700,minWidth:18,flexShrink:0}}, opt.letter+'.');
+          const txt = el('span',{}, opt.text);
+          row.append(lbl, txt);
+          if (opt.letter === mcq.correct) {
+            const ok = el('span',{style:{marginLeft:'auto',color:'#4ade80',fontSize:'.72rem',fontWeight:700,flexShrink:0}}, '✓ Correct');
+            row.appendChild(ok);
+          }
+          body.appendChild(row);
+        });
+        const src = el('div',{style:{marginTop:'.6rem',fontSize:'.7rem',color:'#334155'}}, 'Source: '+mcq.source);
+        body.appendChild(src);
+        card.appendChild(body);
+      }
+
+      list.appendChild(card);
+    });
+  }
+
+  wrap.append(topBar, filterRow, list);
+  return wrap;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: BOOK GEN
+// ══════════════════════════════════════════════════════
+function renderBookGen() {
+  let selectedTopic = '';
+  let selectedCount = 10;
+  const presets = ['Biology','Chemistry','Physics','Cell Biology','Genetics','Organic Chemistry','Thermodynamics','Waves','Nervous System','Digestion','Ecology','Reproduction'];
+
+  const wrap = el('div',{style:{minHeight:'100%',overflowY:'auto',paddingBottom:'2rem'}});
+  const topBar = el('div',{style:{display:'flex',alignItems:'center',gap:'.75rem',padding:'1rem 1.25rem',borderBottom:'1px solid #1a2332',position:'sticky',top:0,background:'#080b0f',zIndex:10}});
+  const backBtn = el('button',{class:'btn btn-ghost',style:{padding:'.45rem .7rem',minWidth:'unset'}});
+  backBtn.appendChild(icon('back',16));
+  backBtn.addEventListener('click', () => go('home'));
+  topBar.append(backBtn, el('div',{style:{fontWeight:800}},'Generate from Book'));
+  wrap.appendChild(topBar);
+
+  const inner = el('div',{style:{padding:'1.25rem'}});
+
+  // Status
+  const statusBg = el('div',{style:{background:'#0f1a0f',border:'1px solid #14532d',borderRadius:10,padding:'.7rem 1rem',marginBottom:'1.25rem',fontSize:'.82rem',color:'#4ade80',display:'flex',alignItems:'center',gap:'.5rem'}});
+  statusBg.textContent = state.bookData?.type === 'pdf'
+    ? `✓ PDF: "${state.bookData.name}" loaded`
+    : `✓ Text loaded: ${Math.round((state.bookData?.data?.length||0)/1000)}k chars`;
+  inner.appendChild(statusBg);
+
+  // Topic input
+  const lbl = (txt) => { const d=el('div',{style:{fontSize:'.72rem',fontWeight:700,color:'#475569',letterSpacing:'.08em',textTransform:'uppercase',marginBottom:'.45rem',marginTop:'1rem'}}); d.textContent=txt; return d; };
+  const topicInput = el('input',{class:'api-input',type:'text',placeholder:'e.g. Cell Respiration, Alkenes, Newton\'s Laws...',style:{marginBottom:'0'}});
+  topicInput.addEventListener('input', () => { selectedTopic = topicInput.value; });
+  inner.append(lbl('Topic to Generate MCQs For'), topicInput);
+
+  // Presets
+  inner.appendChild(lbl('Quick Select'));
+  const presetWrap = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'.4rem',marginBottom:'.5rem'}});
+  presets.forEach(p => {
+    const chip = el('div',{class:'chip',style:{background:'transparent',borderColor:'#1a2332',color:'#475569'}});
+    chip.textContent = p;
+    chip.addEventListener('click', () => {
+      topicInput.value = p; selectedTopic = p;
+      presetWrap.querySelectorAll('.chip').forEach(c => Object.assign(c.style, {background:'transparent',borderColor:'#1a2332',color:'#475569'}));
+      Object.assign(chip.style, {background:'#0f2a3a',borderColor:'#1e4a7a',color:'#60a5fa'});
+    });
+    presetWrap.appendChild(chip);
+  });
+  inner.appendChild(presetWrap);
+
+  // Count
+  inner.appendChild(lbl('Number of MCQs'));
+  const countRow = el('div',{style:{display:'flex',gap:'.45rem',marginBottom:'1.25rem',flexWrap:'wrap'}});
+  [5,10,15,20,30].forEach(n => {
+    const btn = el('button',{style:{padding:'.45rem .85rem',borderRadius:8,border:'1px solid',cursor:'pointer',background: n===10?'#1e3a5f':'transparent',borderColor: n===10?'#3b82f6':'#1a2332',color: n===10?'#60a5fa':'#475569',fontWeight:600,fontSize:'.82rem',fontFamily:'inherit'}});
+    btn.textContent = n;
+    btn.addEventListener('click', () => {
+      selectedCount = n;
+      countRow.querySelectorAll('button').forEach(b => Object.assign(b.style,{background:'transparent',borderColor:'#1a2332',color:'#475569'}));
+      Object.assign(btn.style,{background:'#1e3a5f',borderColor:'#3b82f6',color:'#60a5fa'});
+    });
+    countRow.appendChild(btn);
+  });
+  inner.appendChild(countRow);
+
+  // Generate button
+  const genBtn = el('button',{class:'btn btn-purple btn-full',style:{fontSize:'.95rem',marginBottom:'1rem'}});
+  genBtn.append(icon('spark',16), 'Generate MCQs');
+  genBtn.addEventListener('click', () => {
+    const t = topicInput.value.trim();
+    if (!t) { notify('Please enter or select a topic','error'); render(); return; }
+    handleGenerate(t, selectedCount);
+  });
+  inner.appendChild(genBtn);
+
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER: QUIZ
+// ══════════════════════════════════════════════════════
+function renderQuiz() {
+  const qs = state.quizState;
+  if (!qs) { go('home'); return el('div'); }
+  const {questions, current, answers, done} = qs;
+  const q = questions[current];
+  const totalQ = questions.length;
+  const score = Object.entries(answers).filter(([i,a]) => a === questions[i]?.correct).length;
+
+  if (done) return renderQuizResult(qs, score, totalQ);
+
+  const wrap = el('div',{style:{minHeight:'100%',display:'flex',flexDirection:'column'}});
+
+  // Top bar with progress
+  const topBar = el('div',{style:{display:'flex',alignItems:'center',gap:'.75rem',padding:'1rem 1.25rem',borderBottom:'1px solid #1a2332',position:'sticky',top:0,background:'#080b0f',zIndex:10}});
+  const backBtn = el('button',{class:'btn btn-ghost',style:{padding:'.45rem .7rem',minWidth:'unset'}});
+  backBtn.appendChild(icon('back',16));
+  backBtn.addEventListener('click', () => { state.quizState = null; go('home'); });
+  const progWrap = el('div',{style:{flex:1,height:6,background:'#1a2332',borderRadius:99,overflow:'hidden'}});
+  const progFill = el('div',{style:{height:'100%',background:'linear-gradient(90deg,#3b82f6,#6366f1)',borderRadius:99,width:`${((current+1)/totalQ)*100}%`,transition:'width .4s ease'}});
+  progWrap.appendChild(progFill);
+  const counter = el('div',{style:{fontSize:'.8rem',fontWeight:700,color:'#475569',whiteSpace:'nowrap'}}, `${current+1}/${totalQ}`);
+  topBar.append(backBtn, progWrap, counter);
+
+  const inner = el('div',{style:{flex:1,padding:'1.25rem',overflowY:'auto',paddingBottom:'2rem'}});
+
+  // Topic badge + Q number
+  const c = topicColor(q?.topic||'');
+  const qNum = el('div',{style:{marginBottom:'.6rem',display:'flex',alignItems:'center',gap:'.5rem'}});
+  const topicBadge = el('span',{style:{background:c.bg,border:`1px solid ${c.border}`,color:c.text,fontSize:'.65rem',padding:'.12rem .55rem',borderRadius:99,fontWeight:700}}, q?.topic||'');
+  const qLabel = el('span',{style:{color:'#334155',fontSize:'.72rem',fontWeight:700}}, `Q${current+1}`);
+  qNum.append(topicBadge, qLabel);
+
+  const qText = el('div',{style:{fontSize:'1rem',fontWeight:700,lineHeight:1.55,marginBottom:'1.5rem',color:'#e2e8f0'}});
+  qText.textContent = q?.question||'';
+  inner.append(qNum, qText);
+
+  // Options
+  const userAns = answers[current];
+  q?.options?.forEach(opt => {
+    let stateClass = '';
+    if (userAns !== undefined) {
+      if (opt.letter === q.correct) stateClass = 'correct';
+      else if (opt.letter === userAns) stateClass = 'wrong';
+      else stateClass = 'neutral';
+    }
+    const optEl = el('div',{class:`option ${stateClass}`});
+    const letterEl = el('div',{class:'letter'}, opt.letter);
+    const textEl = el('div',{style:{fontSize:'.87rem',lineHeight:1.5,flex:1,paddingTop:2}});
+    textEl.textContent = opt.text;
+    optEl.append(letterEl, textEl);
+    if (stateClass === 'correct') { const ck = el('div',{style:{color:'#4ade80',marginLeft:'auto',flexShrink:0}}); ck.appendChild(icon('check',16)); optEl.appendChild(ck); }
+    if (stateClass === 'wrong') { const xk = el('div',{style:{color:'#f87171',marginLeft:'auto',flexShrink:0}}); xk.appendChild(icon('x',16)); optEl.appendChild(xk); }
+    if (!userAns) {
+      optEl.addEventListener('click', () => {
+        state.quizState.answers[current] = opt.letter;
+        render();
+      });
+    }
+    inner.appendChild(optEl);
+  });
+
+  // Next button
+  if (userAns !== undefined) {
+    const nextBtn = el('button',{class:'btn btn-primary btn-full',style:{marginTop:'1.25rem'}});
+    nextBtn.append(current+1>=totalQ ? 'See Results' : 'Next Question', icon('arrow',16));
+    nextBtn.addEventListener('click', () => {
+      if (current+1 >= totalQ) { state.quizState.done = true; }
+      else { state.quizState.current = current+1; }
+      render();
+    });
+    inner.appendChild(nextBtn);
+  }
+
+  wrap.append(topBar, inner);
+  return wrap;
+}
+
+function renderQuizResult(qs, score, totalQ) {
+  const pct = Math.round((score/totalQ)*100);
+  const wrap = el('div',{style:{minHeight:'100%',display:'flex',flexDirection:'column'}});
+
+  const topBar = el('div',{style:{display:'flex',alignItems:'center',gap:'.75rem',padding:'1rem 1.25rem',borderBottom:'1px solid #1a2332'}});
+  const backBtn = el('button',{class:'btn btn-ghost',style:{padding:'.45rem .7rem',minWidth:'unset'}});
+  backBtn.appendChild(icon('back',16));
+  backBtn.addEventListener('click', () => { state.quizState = null; go('home'); });
+  topBar.append(backBtn, el('div',{style:{fontWeight:800}},'Quiz Complete!'));
+
+  const body = el('div',{style:{flex:1,overflowY:'auto',padding:'1.5rem 1.25rem 3rem',display:'flex',flexDirection:'column',alignItems:'center',gap:'1rem'}});
+
+  // Score circle
+  const circle = el('div',{style:{width:130,height:130,borderRadius:'50%',background:'linear-gradient(135deg,#1e3a5f,#1e2a4a)',border:'3px solid #3b82f6',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column'}});
+  circle.append(
+    el('div',{style:{fontSize:'2rem',fontWeight:800,color:pct>=70?'#4ade80':pct>=50?'#fbbf24':'#f87171'}}, pct+'%'),
+    el('div',{style:{fontSize:'.72rem',color:'#475569'}}, `${score}/${totalQ} correct`)
+  );
+
+  const emoji = pct>=80?'🎉 Excellent!':pct>=60?'👍 Good job!':'📚 Keep studying!';
+  const msg = el('div',{style:{fontSize:'1.2rem',fontWeight:800}}, emoji);
+  const topicLabel = el('div',{style:{color:'#475569',fontSize:'.85rem'}});
+  topicLabel.innerHTML = `Topic: <strong style="color:#94a3b8">${qs.topic==='all'?'Mixed':qs.topic}</strong>`;
+
+  body.append(circle, msg, topicLabel);
+
+  // Wrong answers review
+  const wrongs = Object.entries(qs.answers).filter(([i,a]) => a !== qs.questions[i]?.correct);
+  if (wrongs.length) {
+    const sec = el('div',{style:{width:'100%'}});
+    sec.appendChild(el('div',{style:{fontSize:'.68rem',fontWeight:700,color:'#475569',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:'.6rem'}},'Incorrect Answers'));
+    wrongs.forEach(([i,ans]) => {
+      const q2 = qs.questions[i];
+      const card = el('div',{style:{background:'#180a0a',border:'1px solid #7f1d1d',borderRadius:10,padding:'.85rem',marginBottom:'.5rem'}});
+      const qtxt = el('div',{style:{fontSize:'.82rem',fontWeight:600,marginBottom:'.4rem',color:'#e2e8f0'}});
+      qtxt.textContent = q2.question;
+      const yourAns = el('div',{style:{fontSize:'.78rem',color:'#f87171'}});
+      yourAns.textContent = `Your answer: ${ans} · ${q2.options?.find(o=>o.letter===ans)?.text||''}`;
+      const corrAns = el('div',{style:{fontSize:'.78rem',color:'#4ade80'}});
+      corrAns.textContent = `Correct: ${q2.correct} · ${q2.options?.find(o=>o.letter===q2.correct)?.text||''}`;
+      card.append(qtxt, yourAns, corrAns);
+      sec.appendChild(card);
+    });
+    body.appendChild(sec);
+  }
+
+  // Buttons
+  const btnRow = el('div',{style:{display:'flex',gap:'.6rem',width:'100%',justifyContent:'center'}});
+  const homeBtn = el('button',{class:'btn btn-ghost',style:{flex:1,justifyContent:'center'}});
+  homeBtn.textContent = '← Home';
+  homeBtn.addEventListener('click', () => { state.quizState = null; go('home'); });
+  const retryBtn = el('button',{class:'btn btn-primary',style:{flex:1,justifyContent:'center'}});
+  retryBtn.textContent = 'Retry';
+  retryBtn.addEventListener('click', () => {
+    state.quizState = {...qs, current:0, answers:{}, done:false, questions:[...qs.questions].sort(()=>Math.random()-.5)};
+    render();
+  });
+  btnRow.append(homeBtn, retryBtn);
+  body.appendChild(btnRow);
+
+  wrap.append(topBar, body);
+  return wrap;
+}
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+render();
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
